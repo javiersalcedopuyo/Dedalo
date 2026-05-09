@@ -320,7 +320,7 @@ struct Project
     {
         let iter = std::ranges::find_if( targets, [ name ]( const Target& target ) -> bool
         {
-            return target.name == name;
+            return strcasecmp( target.name.c_str(), name.c_str() ) == 0;
         });
 
         return iter == targets.end()
