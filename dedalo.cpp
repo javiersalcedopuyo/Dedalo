@@ -172,6 +172,8 @@ struct Target
 
     List<ScriptPtr> pre_build_scripts  = {};
     List<ScriptPtr> post_build_scripts = {};
+
+    String source_path = "src"; // Only really meant for the test target to have a different one.
 };
 
 enum struct Location: u8
@@ -432,6 +434,19 @@ struct Project
                 "pedantic" }
         },
         {
+            .name               = "Test",
+            .optimization_level = 0,
+            .sanitizers         = ASan | UBSan,
+            .defines            = { "TESTING" },
+            .compiler_flags     = {
+                "g",
+                "Wall",
+                "Wextra",
+                "Werror",
+                "pedantic" },
+            .source_path        = "tests"
+        },
+        {
             .name               = "Release",
             .optimization_level = 3,
             .sanitizers         = No_Sanitizers,
@@ -615,7 +630,7 @@ void build( Project* project, const MainArgvSlice args )
 {
     REQUIRE( project );
 
-    // "Debug" and "Release" targets are provided by default.
+    // "Debug", "Test", and "Release" targets are provided by default.
     // You can override them by creating a new target with the same name.
     // "Debug" is the default target when none is provided to the `run` command.
     // C++20 is the default version.
@@ -653,6 +668,23 @@ int main( [[maybe_unused]] int argc, [[maybe_unused]] char* argv[] )
 )");
 
 
+// TODO: Validate the arguments
+file_private let test_file_template_icaro = String(R"(
+#include "../icaro.hpp"
+
+auto main( int argc, char* argv[] ) -> int
+{
+    TEST( hello_tests,
+    {
+        VERIFY( true );
+        return true;
+    });
+
+    Icaro::run({ .filter = argc > 1 ? argv[1] : "" });
+}
+)");
+
+
 static let include_paths  = List<String>{ "src", "lib"  };
 static let dep_output_dir = String( "./build/dep"       );
 static let bin_output_dir = String( "./build/bin"       );
@@ -684,7 +716,7 @@ fun init() -> ResultCode
     // Create the directory structure
     {
         FS::create_directory( "lib" );
-        // TODO: FS::create_directory( "tests"  );
+        FS::create_directory( "tests" );
         // TODO: Create a cache and/or other build system files (ninja, make, CMake...)
         FS::create_directories( obj_output_dir );
         FS::create_directories( lto_cache_dir  ); // FIXME: I think this is not used by MSCV
@@ -714,6 +746,17 @@ fun init() -> ResultCode
         fputs( filled_template.c_str(), build_file );
         fclose( build_file );
     }
+
+    var* tests_file = fopen( "tests/tests.cpp", "w" );
+    REQUIRE( tests_file );
+    defer( fclose( tests_file ) );
+
+    // TODO: Support other test frameworks
+    if( FS::is_regular_file( "icaro.hpp" ) )
+    {
+        fputs( test_file_template_icaro.c_str(), tests_file );
+    }
+
     return OK;
 }
 
@@ -871,6 +914,7 @@ file_private fun compile(
         Compiler compiler;
         String   compiler_flags;
         String   defines;
+        String   source_path;
         String   include_paths;
         u8       cpp_version;
         u8       optimization_level;
@@ -910,7 +954,7 @@ file_private fun compile(
             var src_relative_cpp_path = String();
             for( let& dir: source_file )
             {
-                if( dir != Path( "src" ) )
+                if( dir != Path( ctx.source_path ) )
                 {
                     src_relative_cpp_path += "/" + dir.string();
                 }
@@ -1000,6 +1044,7 @@ file_private fun compile(
         .compiler                   = project.compiler,
         .compiler_flags             = get_flags_from( target ),
         .defines                    = get_defines_from( target ),
+        .source_path                = target.source_path,
         .include_paths              = ctx_include_paths,
         .cpp_version                = project.cpp_version,
         .optimization_level         = target.optimization_level,
@@ -1348,7 +1393,7 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
 
             // Find all the source files
             var cpp_paths = List<Path>{};
-            gather_files( "src", {".cpp", ".cc", ".cxx"}, target->ignored_paths, &cpp_paths );
+            gather_files( target->source_path, {".cpp", ".cc", ".cxx"}, target->ignored_paths, &cpp_paths );
 
             // TODO: Fetch any remote dependencies and place them in lib/
             // TODO: Link any dynamic libraries into their corresponding .so in build/bin/
@@ -1411,14 +1456,6 @@ fun run() -> ResultCode
 }
 
 
-fun test() -> ResultCode
-{
-    // TODO:
-    UNIMPLEMENTED();
-    return OK;
-}
-
-
 fun clean() -> ResultCode
 {
     FS::remove_all( "./build" );
@@ -1441,21 +1478,26 @@ fun main( i32 argc, char* argv[] ) -> i32
     }
     else if( cmd == "build" or cmd == "run" or cmd == "test" )
     {
-        var target = String("");
-        let run_after_build = ( cmd == "run" );
+        var target_name = String("");
+        let run_after_build = ( cmd == "run" or cmd == "test" );
 
         // Pass the remaining args to the build script
         var first_remaining_arg = 2u;
         if( argc > 2 )
         {
-            target = argv[2];
+            target_name = argv[2];
             ++first_remaining_arg;
         }
         let remaining_args = MainArgvSlice{
             .data = argv + first_remaining_arg,
             .size = as<u32>( argc ) - first_remaining_arg };
 
-        if( let error = build( target, run_after_build, remaining_args ) )
+        if( cmd == "test" )
+        {
+            target_name = "Test";
+        }
+
+        if( let error = build( target_name, run_after_build, remaining_args ) )
         {
             ERROR( "Build failed with error {}", stringify_result( error ) );
             return error;

@@ -26,6 +26,7 @@ That way you could give it a more "official" name like `cpp` so you can do thing
 - init
 - build [TargetName]
 - run [TargetName]
+- test
 - clean
 
 
@@ -55,12 +56,15 @@ This will generate the following tree:
 ├── compile_commands.json
 ├── lib
 └── src
-    └── main.cpp
+│   └── main.cpp
+└── tests
 ```
+> NOTE: If the header of the test framework [Icaro](https://github.com/javiersalcedopuyo/Icaro) is present in the directory at the time of calling `init`, it'll also generate a `tests/test.cpp` file.
+
 Running `build/bin/my_project` will print the usual "Hello, World!".
 
 By default `ddl build` and `ddl run` will compile in Debug mode.
-A `Release` and `Debug` targets are provided by default with the following configuration:
+`Release`, 'Test', and `Debug` targets are provided by default with the following configuration:
 ```c++
 {
     .name               = "Debug",
@@ -72,6 +76,19 @@ A `Release` and `Debug` targets are provided by default with the following confi
         "Wall",
         "Werror",
         "pedantic" }
+},
+{
+    .name               = "Test",
+    .optimization_level = 0,
+    .sanitizers         = ASan | UBSan,
+    .defines            = { "TESTING" },
+    .compiler_flags     = {
+        "g",
+        "Wall",
+        "Wextra",
+        "Werror",
+        "pedantic" },
+    .source_path        = "tests"
 },
 {
     .name               = "Release",
@@ -133,7 +150,8 @@ project->add_dependency({
     - [x] Basic unbalanced multithreading
     - [x] Logging
     - [ ] Balanced threads (perhaps a job system)
-- [ ] `test` command
+- [x] `test` command
+- [ ] Native support for test frameworks like [Catch2](https://github.com/catchorg/Catch2) or [GoogleTest](https://github.com/google/googletest).
 - [ ] Local dependency management
 - [ ] Remote depenency management and/or integration with Conan.
 - [ ] Support for MSVC
