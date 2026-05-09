@@ -2,7 +2,7 @@ EXECUTABLE_NAME=ddl
 
 CC = clang++
 CFLAGS = -std=c++20\
-		 -Werror -Wall -pedantic\
+		 -Werror -Wall -Wextra -pedantic\
 		 -DENABLE_LOGS\
 		 -fno-exceptions\
 		 -fno-rtti

@@ -427,6 +427,7 @@ struct Project
             .compiler_flags     = {
                 "g",
                 "Wall",
+                "Wextra",
                 "Werror",
                 "pedantic" }
         },
@@ -437,6 +438,7 @@ struct Project
             .defines            = { "RELEASE" },
             .compiler_flags     = {
                 "Wall",
+                "Wextra",
                 "Werror",
                 "pedantic" }
         }
@@ -644,7 +646,7 @@ void build( Project* project, const MainArgvSlice args )
 static let new_main_file_template = String(R"(
 #include <stdio.h>
 
-int main( int argc, char* argv[] )
+int main( [[maybe_unused]] int argc, [[maybe_unused]] char* argv[] )
 {
     printf("Hello World!\n");
 }
@@ -1016,7 +1018,7 @@ file_private fun compile(
     var stop_src = StopSrc{};
     for( var i = 0u; i < num_threads; ++i )
     {
-        let start = as<ptrdiff_t>( i * max_files_per_thread );
+        let start = i * max_files_per_thread;
         let end   = as<ptrdiff_t>( min( start + max_files_per_thread, cpp_paths.size() ) );
         REQUIRE( start < cpp_paths.size() );
 
