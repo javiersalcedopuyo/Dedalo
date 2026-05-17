@@ -128,6 +128,60 @@ static inline fun println( std::format_string<Args...> fmt_str, Args&&... args )
 #endif
 
 
+struct Platform
+{
+    enum List: u8
+    {
+        Linux   = 1 << 0,
+        Apple   = 1 << 1,
+        Windows = 1 << 2,
+        UNIX    = Linux | Apple
+    } val;
+
+    [[nodiscard]]
+    constexpr fun is( const List p ) const -> bool
+    {
+        return (p & val) != 0;
+    }
+
+    [[nodiscard]]
+    constexpr fun static_lib_extension() const -> String
+    {
+        if( this->is( UNIX ) )
+            return ".a";
+        else if( this->is( Windows ) )
+            return ".lib";
+        else
+            UNREACHABLE;
+    }
+
+    [[nodiscard]]
+    constexpr fun dynamic_lib_extension() const -> String
+    {
+        if( this->is( Linux ) )
+            return ".so";
+        if( this->is( Apple ) )
+            return ".dylib";
+        else if( this->is( Windows ) )
+            return ".dll";
+        else
+            UNREACHABLE;
+    }
+};
+
+
+static constexpr Platform platform =
+#if defined( __linux__ )
+    { .val = Platform::Linux };
+#elif defined( __APPLE__ )
+    { .val = Platform::Apple };
+#elif defined( _WIN32 )
+    { .val = Platform::Windows };
+#else
+    #error Unsupported platform
+#endif
+
+
 enum struct Compiler: u8 { Clang, GCC, MSVC };
 
 
@@ -306,17 +360,18 @@ struct Project
         dependencies.push_back( dependency );
     }
 
-#if defined( __APPLE__ )
     // TODO: Support local frameworks
     constexpr fun add_framework( const Framework& framework )
     {
-        REQUIRE( framework.name != "UNNAMED" );
-        REQUIRE( !framework.name.empty() );
+        if constexpr( platform.is( Platform::Apple ) )
+        {
+            REQUIRE( framework.name != "UNNAMED" );
+            REQUIRE( !framework.name.empty() );
 
-        // This is just for the linker so I don't really care if it already exists
-        frameworks.push_back( framework );
+            // This is just for the linker so I don't really care if it already exists
+            frameworks.push_back( framework );
+        }
     }
-#endif // __APPLE__
 
     [[nodiscard]]
     constexpr fun find_target( const String& name ) const -> const Target*
@@ -992,13 +1047,12 @@ file_private fun compile(
                 command += fmt( " -MJ {} ", out_json_path.string() );
 
                 // TODO: Is this necessary on Windows too?
-                #if !defined( _WIN32 )
+                if constexpr( platform.is( Platform::UNIX ) )
                 {
                     // This is unnecessary for compilation, but clangd (the LSP not the compiler)
                     // doesn't seem to find system headers without it.
                     command += " -I/usr/local/include";
                 }
-                #endif
             }
 
             if( ctx.link_time_optimizations != LTO::None )
@@ -1032,11 +1086,10 @@ file_private fun compile(
     {
         ctx_include_paths += fmt( "-I{} ", path );
     }
-    #if defined( __APPLE__ )
+    if constexpr( platform.is( Platform::Apple ) )
     {
         ctx_include_paths += "-I/opt/homebrew/include";
     }
-    #endif
 
     // TODO: Spread the remaining files across all the threads rather than spawning a dedicated one
     let num_threads = min( Thread::hardware_concurrency(), cpp_paths.size() );
@@ -1093,6 +1146,8 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
 
     TIME_SCOPE( "Linking phase" );
 
+    FS::create_directories( bin_output_dir );
+
     var command = get_compiler_name( project.compiler );
 
     command += get_sanitizer_flags( target );
@@ -1123,7 +1178,8 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
             continue;
 
         let lib_dir = libraries_dir + "/" + dependency.name;
-        var lib_path = lib_dir + "/lib" + dependency.name;
+        var lib_files = List<Path>{}; // A single dependency might have multiple binary files that need to be linked
+        let excluded_subdirs = List<Path>{}; // TODO: Automatically exclude paths based on platform?
 
         // TODO: Include the version somehow
         switch( dependency.linking )
@@ -1131,48 +1187,47 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
             case Linking::Static:
             {
                 REQUIRE( FS::is_directory( lib_dir ) );
-
-                lib_path += ".a";
-                REQUIRE( FS::is_regular_file( lib_path ) );
-
-                command += fmt( " {}", lib_path );
+                gather_files(
+                    lib_dir,
+                    { platform.static_lib_extension() },
+                    excluded_subdirs,
+                    &lib_files );
                 break;
             }
             case Linking::Dynamic:
             {
-                if( dependency.location == Location::System )
+                switch( dependency.location )
                 {
-                    command += fmt( " -l{}", dependency.name ); // system library
-                }
-                else if( dependency.location == Location::Local )
-                {
-                    if( FS::is_regular_file( lib_path + ".so" ) )
+                    case Location::System:
                     {
-                        lib_path += ".so";
+                        command += " -l" + dependency.name; // system library
+                        break;
                     }
-                    else if( FS::is_regular_file( lib_path + ".dylib" ) )
+                    case Location::Local:
                     {
-                        lib_path += ".dylib";
-                    }
-                    else
-                    {
-                        ERROR( "Dependency {} has the wrong type for a dynamic library.", dependency.name );
-                        continue;
-                    }
+                        REQUIRE( FS::is_directory( lib_dir ) );
 
-                    // So it can be loaded correctly at runtime
-                    // FIXME: This relies on the install name matching the file name.
-                    FS::copy_file(
-                        lib_path,
-                        bin_output_dir + "/" + Path( lib_path ).filename().string(),
-                        FS::copy_options::overwrite_existing );
+                        gather_files(
+                            lib_dir,
+                            { platform.dynamic_lib_extension() },
+                            excluded_subdirs,
+                            &lib_files );
 
-                    command += fmt( " {}", lib_path );
-                }
-                else
-                {
-                    UNIMPLEMENTED_MSG( "Remote dynamic libraries are not supported." );
-                    continue;
+                        // So they can be loaded correctly at runtime
+                        for( let& lib: lib_files )
+                        {
+                            FS::copy_file(
+                                lib,
+                                bin_output_dir + "/" + lib.filename().string(),
+                                FS::copy_options::overwrite_existing );
+                        }
+                        break;
+                    }
+                    case Location::Remote:
+                    {
+                        UNIMPLEMENTED_MSG( "Remote dynamic libraries are not supported." );
+                        break;
+                    }
                 }
                 break;
             }
@@ -1182,6 +1237,11 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
                 break;
             }
         }
+
+        for( let& lib: lib_files )
+        {
+            command += " " + lib.string();
+        }
         command += " " + dependency.linker_flags;
     }
 
@@ -1190,7 +1250,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
         command += " -" + flag;
     }
 
-    #if defined( __APPLE__ )
+    if constexpr( platform.is( Platform::Apple ) )
     {
         for( let& framework: project.frameworks )
         {
@@ -1205,7 +1265,6 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
         command += " -Wl,-rpath,/usr/local/lib";
         command += " -L/opt/homebrew/lib";
     }
-    #endif
 
     if( project.link_time_optimizations != LTO::None )
     {
@@ -1241,8 +1300,6 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
     command += fmt( " -o {}/{}", bin_output_dir, project.name );
 
     INFO( "{}", command );
-
-    FS::create_directories( bin_output_dir );
 
     if( system( command.c_str() ) != OK )
     {
