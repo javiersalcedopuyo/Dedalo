@@ -626,7 +626,7 @@ static let new_project_template = String(R"(
 #undef INCLUDE_AS_HEADER
 
 extern "C"
-void build( Project* project, const MainArgvSlice args )
+void build( Project* project, [[maybe_unused]] const MainArgvSlice args )
 {
     REQUIRE( project );
 
