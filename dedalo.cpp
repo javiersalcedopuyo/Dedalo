@@ -742,7 +742,8 @@ auto main( int argc, char* argv[] ) -> int
 
 static let include_paths  = List<String>{ "src", "lib"  };
 static let dep_output_dir = String( "./build/dep"       );
-static let bin_output_dir = String( "./build/bin"       );
+static let bin_exec_dir   = String( "./build/bin"       );
+static let bin_lib_dir    = String( "./build/bin/lib"   );
 static let libraries_dir  = String( "./lib"             );
 static let json_temp_dir  = Path  ( "./build/json"      );
 static let obj_output_dir = String( "./build/obj"       );
@@ -1146,7 +1147,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
 
     TIME_SCOPE( "Linking phase" );
 
-    FS::create_directories( bin_output_dir );
+    FS::create_directories( bin_lib_dir );
 
     var command = get_compiler_name( project.compiler );
 
@@ -1218,7 +1219,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
                         {
                             FS::copy_file(
                                 lib,
-                                bin_output_dir + "/" + lib.filename().string(),
+                                bin_lib_dir + "/" + lib.filename().string(),
                                 FS::copy_options::overwrite_existing );
                         }
                         break;
@@ -1265,6 +1266,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
         command += " -Wl,-rpath,/usr/local/lib";
         command += " -L/opt/homebrew/lib";
     }
+    command += " -L" + bin_lib_dir;
 
     if( project.link_time_optimizations != LTO::None )
     {
@@ -1297,7 +1299,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
         }
     }
 
-    command += fmt( " -o {}/{}", bin_output_dir, project.name );
+    command += fmt( " -o {}/{}", bin_exec_dir, project.name );
 
     INFO( "{}", command );
 
@@ -1486,7 +1488,7 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
         if( run_after_build )
         {
             INFO( "RUNNING...\n" );
-            let command = "./" + bin_output_dir + "/" + project.name;
+            let command = "./" + bin_exec_dir + "/" + project.name;
             if( system( command.c_str() ) != OK )
             {
                 return RUN_COMMAND_FAILED;
@@ -1505,7 +1507,7 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
 fun run() -> ResultCode
 {
     let project_name = FS::current_path().stem().string();
-    let command = "./" + bin_output_dir + "/" + project_name;
+    let command = "./" + bin_exec_dir + "/" + project_name;
 
     return system( command.c_str() ) == OK
         ? OK
