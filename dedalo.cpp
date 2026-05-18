@@ -167,6 +167,19 @@ struct Platform
         else
             UNREACHABLE;
     }
+
+    [[nodiscard]]
+    constexpr fun get_name() const -> String
+    {
+        if( this->is( Linux ) )
+            return "Linux";
+        if( this->is( Apple ) )
+            return "Apple";
+        else if( this->is( Windows ) )
+            return "Windows";
+        else
+            UNREACHABLE;
+    }
 };
 
 
