@@ -1547,60 +1547,103 @@ fun clean() -> ResultCode
 }
 
 
+file_private fun to_lower( String* str )
+{
+    REQUIRE( str );
+    std::ranges::transform( *str, str->begin(), []( unsigned char c ) -> unsigned char { return std::tolower( c ); } );
+}
+
+
+enum struct Command : u8 { Init, Build, Run, Test, Clean, Version, Unknown };
+file_private fun parse_command( String cmd ) -> Command
+{
+    to_lower( &cmd );
+
+    if( cmd == "build" )
+        return Command::Build;
+    else if( cmd == "run" )
+        return Command::Run;
+    else if( cmd == "test" )
+        return Command::Test;
+    else if( cmd == "clean" )
+        return Command::Clean;
+    else if( cmd == "--version" or cmd == "-v" )
+        return Command::Version;
+    else if( cmd == "init" )
+        return Command::Init;
+    else
+        return Command::Unknown;
+}
+
+
+file_private fun print_valid_commands()
+{
+    println("Valid commands:\n"
+        "\tbuild\n"
+        "\tclean\n"
+        "\tinit\n"
+        "\trun\n"
+        "\ttest\n"
+        "\t--version, -v\n" );
+}
+
+
 fun main( i32 argc, char* argv[] ) -> i32
 {
     if( argc < 2 )
     {
         ERROR( "No command provided." );
+        print_valid_commands();
         return INVALID_ARGUMENT;
     }
 
-    let cmd = String( argv[1] );
-    if( cmd == "init" )
+    let cmd = parse_command( argv[1] );
+    switch( cmd )
     {
-        return init();
-    }
-    else if( cmd == "build" or cmd == "run" or cmd == "test" )
-    {
-        var target_name = String("");
-        let run_after_build = ( cmd == "run" or cmd == "test" );
-
-        // Pass the remaining args to the build script
-        var first_remaining_arg = 2u;
-        if( argc > 2 and cmd != "test" )
+        case Command::Init:
+            return init();
+        case Command::Clean:
+            return clean();
+        case Command::Version:
+            println( "Dedalo v{}.{}.{}", version.major, version.minor, version.patch );
+            return OK;
+        case Command::Build:
+        case Command::Run:
+        case Command::Test:
         {
-            target_name = argv[2];
-            ++first_remaining_arg;
-        }
-        let remaining_args = MainArgvSlice{
-            .data = argv + first_remaining_arg,
-            .size = as<u32>( argc ) - first_remaining_arg };
+            var target_name = String("");
+            let run_after_build = ( cmd == Command::Run or cmd == Command::Test );
 
-        if( cmd == "test" )
-        {
-            target_name = "Test";
-        }
+            // Pass the remaining args to the build script
+            var first_remaining_arg = 2u;
+            if( argc > 2 and cmd != Command::Test )
+            {
+                target_name = argv[2];
+                ++first_remaining_arg;
+            }
+            let remaining_args = MainArgvSlice{
+                .data = argv + first_remaining_arg,
+                .size = as<u32>( argc ) - first_remaining_arg };
 
-        if( let error = build( target_name, run_after_build, remaining_args ) )
+            if( cmd == Command::Test )
+            {
+                target_name = "Test";
+            }
+
+            if( let error = build( target_name, run_after_build, remaining_args ) )
+            {
+                ERROR( "Build failed with error {}", stringify_result( error ) );
+                return error;
+            }
+            return OK;
+        }
+        default:
         {
-            ERROR( "Build failed with error {}", stringify_result( error ) );
-            return error;
+            ERROR( "Unrecognized command '{}'.", argv[1] );
+            print_valid_commands();
+            return INVALID_ARGUMENT;
         }
     }
-    else if( cmd == "clean" )
-    {
-        return clean();
-    }
-    else if( cmd == "--version" or cmd == "-v" )
-    {
-        println( "Dedalo v{}.{}.{}", version.major, version.minor, version.patch );
-    }
-    else
-    {
-        ERROR( "Unrecognized command '{}'.", cmd );
-        return INVALID_ARGUMENT;
-    }
-    return OK;
 }
 
 #endif // !INCLUDE_AS_HEADER
