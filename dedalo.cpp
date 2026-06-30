@@ -63,31 +63,31 @@ using Path = FS::path;
 
 
 template< typename... Args >
-static inline fun fmt( std::format_string<Args...> fmt_str, Args&&... args ) -> String
+static inline fun strfmt( std::format_string<Args...> fmt_str, Args&&... args ) -> String
 {
     return std::format( fmt_str, std::forward<Args>( args )... );
 }
 
 
 template< typename... Args >
-static inline fun println( std::format_string<Args...> fmt_str, Args&&... args )
+static inline fun println( FILE* stream, std::format_string<Args...> fmt_str, Args&&... args )
 {
-    printf( "%s\n", fmt( fmt_str, std::forward<Args>( args )... ).c_str() );
+    fprintf( stream, "%s\n", strfmt( fmt_str, std::forward<Args>( args )... ).c_str() );
 }
 
 
  // TODO: Support MSVC macros
 #if defined( ENABLE_LOGS )
     #if defined( NDEBUG )
-        #define INFO(...)                println( "[DEDALO] {}",    fmt(__VA_ARGS__) )
-        #define ERROR(...)               println( "[DEDALO] ⛔ ERROR: {}",   fmt(__VA_ARGS__) )
+        #define INFO(...)                println( stderr, "[DEDALO] {}",    strfmt(__VA_ARGS__) )
+        #define ERROR(...)               println( stderr, "[DEDALO] ⛔ ERROR: {}",   strfmt(__VA_ARGS__) )
         #define WARNING(...)             ERROR( __VA_ARGS__ ) // On release, treat all warnings as errors
         #define UNIMPLEMENTED_MSG( ... )
     #else // NDEBUG
-        #define INFO(...)                println( "💬 INFO [{} @ {} ln{}]: {}",    __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
-        #define WARNING(...)             println( "⚠️ WARNING [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
-        #define ERROR(...)               println( "⛔️ ERROR [{} @ {} ln{}]: {}",   __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
-        #define UNIMPLEMENTED_MSG( ... ) println( "🚧 UNIMPLEMENTED [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, fmt(__VA_ARGS__) )
+        #define INFO(...)                println( stderr, "💬 INFO [{} @ {} ln{}]: {}",    __func__, __FILE__, __LINE__, strfmt(__VA_ARGS__) )
+        #define WARNING(...)             println( stderr, "⚠️ WARNING [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, strfmt(__VA_ARGS__) )
+        #define ERROR(...)               println( stderr, "⛔️ ERROR [{} @ {} ln{}]: {}",   __func__, __FILE__, __LINE__, strfmt(__VA_ARGS__) )
+        #define UNIMPLEMENTED_MSG( ... ) println( stderr, "🚧 UNIMPLEMENTED [{} @ {} ln{}]: {}", __func__, __FILE__, __LINE__, strfmt(__VA_ARGS__) )
     #endif // NDEBUG
     #define UNIMPLEMENTED()          UNIMPLEMENTED_MSG( "" )
 #else // ENABLE_LOGS
@@ -565,7 +565,7 @@ file_private fun fmt_time_since( const Time start ) -> String
     let s  = duration_cast< seconds >( duration - m );
     let ms = duration_cast< milliseconds >( duration - m - s );
 
-    return fmt( "{}:{}:{}", m, s, ms );
+    return strfmt( "{}:{}:{}", m, s, ms );
 }
 
 #define TIME_SCOPE( scope_name )\
@@ -1044,7 +1044,7 @@ file_private fun compile(
                 continue;
             }
 
-            var command = fmt(
+            var command = strfmt(
                 "{} -std=c++{} {} {} -O{} {} -c {} -o {} -MMD -MF {}",
                 get_compiler_name( ctx.compiler ),
                 ctx.cpp_version,
@@ -1061,7 +1061,7 @@ file_private fun compile(
                 // Make sure we're replicating the ./src tree in the compile_commands.json temp directory
                 let out_json_path = Path( json_temp_dir.string() + src_relative_cpp_path + ".json" );
                 FS::create_directories( out_json_path.parent_path() );
-                command += fmt( " -MJ {} ", out_json_path.string() );
+                command += strfmt( " -MJ {} ", out_json_path.string() );
 
                 // TODO: Is this necessary on Windows too?
                 if constexpr( platform.is( Platform::UNIX ) )
@@ -1081,7 +1081,7 @@ file_private fun compile(
                         if( ctx.link_time_optimizations == LTO::Incremental )
                         {
                             // FIXME: I'm not entirely sure this is necessary
-                            command += fmt( " -lfto-incremental={}", lto_cache_dir );
+                            command += strfmt( " -lfto-incremental={}", lto_cache_dir );
                         }
                         break;
                     }
@@ -1101,7 +1101,7 @@ file_private fun compile(
     var ctx_include_paths = String();
     for( let& path: include_paths )
     {
-        ctx_include_paths += fmt( "-I{} ", path );
+        ctx_include_paths += strfmt( "-I{} ", path );
     }
     if constexpr( platform.is( Platform::Apple ) )
     {
@@ -1293,7 +1293,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
                 command += " -lfto";
                 if( project.link_time_optimizations == LTO::Incremental )
                 {
-                    command += fmt( " -lfto-incremental={}", lto_cache_dir );
+                    command += strfmt( " -lfto-incremental={}", lto_cache_dir );
                 }
                 break;
             }
@@ -1315,7 +1315,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
         }
     }
 
-    command += fmt( " -o {}/{}", bin_exec_dir, project.name );
+    command += strfmt( " -o {}/{}", bin_exec_dir, project.name );
 
     INFO( "{}", command );
 
@@ -1578,13 +1578,14 @@ file_private fun parse_command( String cmd ) -> Command
 
 file_private fun print_valid_commands()
 {
-    println("Valid commands:\n"
-        "\tbuild\n"
-        "\tclean\n"
-        "\tinit\n"
-        "\trun\n"
-        "\ttest\n"
-        "\t--version, -v\n" );
+    println( stderr,
+        "Valid commands:\n"
+            "\tbuild\n"
+            "\tclean\n"
+            "\tinit\n"
+            "\trun\n"
+            "\ttest\n"
+            "\t--version, -v\n" );
 }
 
 
@@ -1605,7 +1606,7 @@ fun main( i32 argc, char* argv[] ) -> i32
         case Command::Clean:
             return clean();
         case Command::Version:
-            println( "Dedalo v{}.{}.{}", version.major, version.minor, version.patch );
+            println( stdout, "Dedalo v{}.{}.{}", version.major, version.minor, version.patch );
             return OK;
         case Command::Build:
         case Command::Run:
