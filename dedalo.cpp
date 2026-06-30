@@ -540,6 +540,9 @@ struct MainArgvSlice
 {
     const CString* data = nullptr;
     const u32      size = 0;
+
+    [[nodiscard]] constexpr fun begin() const -> const CString* { return data; }
+    [[nodiscard]] constexpr fun end()   const -> const CString* { return data + size; }
 };
 
 
@@ -1501,7 +1504,16 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
         if( run_after_build )
         {
             INFO( "RUNNING...\n" );
-            let command = "./" + bin_exec_dir + "/" + project.name;
+            var command = "./" + bin_exec_dir + "/" + project.name;
+
+            if( target_name == "Test" )
+            {
+                for( let *arg: args )
+                {
+                    command += " " + String( arg );
+                }
+            }
+
             if( system( command.c_str() ) != OK )
             {
                 return RUN_COMMAND_FAILED;
@@ -1555,7 +1567,7 @@ fun main( i32 argc, char* argv[] ) -> i32
 
         // Pass the remaining args to the build script
         var first_remaining_arg = 2u;
-        if( argc > 2 )
+        if( argc > 2 and cmd != "test" )
         {
             target_name = argv[2];
             ++first_remaining_arg;
