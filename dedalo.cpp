@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cmath>
+#include <strings.h>
 
 #if !defined( __APPLE__ )
     #define ELAST 256
@@ -332,9 +333,9 @@ struct Project
         command_line_arguments(     args.command_line_arguments ),
         default_target(             args.default_target ),
         link_time_optimizations(    args.link_time_optimizations ),
-        dependencies(               args.dependencies ),
+        dependencies(               args.dependencies )
     #if defined( __APPLE__ )
-        frameworks(                 args.frameworks )
+        ,frameworks(                 args.frameworks )
     #endif
     {
         for( var &target: targets )
@@ -382,6 +383,8 @@ struct Project
     }
 
     // TODO: Support local frameworks
+#if defined( __APPLE__ )
+//{
     constexpr fun add_framework( const Framework& framework )
     {
         if constexpr( platform.is( Platform::Apple ) )
@@ -393,6 +396,8 @@ struct Project
             frameworks.push_back( framework );
         }
     }
+//}
+#endif
 
     [[nodiscard]]
     constexpr fun find_target( const String& name ) const -> const Target*
@@ -599,7 +604,7 @@ file_private fun is_directory_empty( const Path& path) -> bool
     return true;
 }
 
-enum [[nodiscard]] ResultCode: i8
+enum [[nodiscard]] ResultCode: i16
 {
     UNKNOWN_ERROR       = -1,
     OK                  = 0,
@@ -1282,7 +1287,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
         command += " -" + flag;
     }
 
-    if constexpr( platform.is( Platform::Apple ) )
+    #if defined( __APPLE__ )
     {
         for( let& framework: project.frameworks )
         {
@@ -1297,6 +1302,8 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
         command += " -Wl,-rpath,/usr/local/lib";
         command += " -L/opt/homebrew/lib";
     }
+    #endif
+
     command += " -L" + build_lib_dir;
 
     if( project.link_time_optimizations != LTO::None )
