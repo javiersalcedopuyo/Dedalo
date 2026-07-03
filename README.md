@@ -23,11 +23,12 @@ That way you could give it a more "official" name like `cpp` so you can do thing
 
 
 ## Commands
-- init
-- build [TargetName]
-- run [TargetName]
-- test
-- clean
+- `init`
+- `build [TargetName]`
+- `run [TargetName]`
+- `test [TestFrameworkArgs]`
+- `clean`
+- `--version` or `-v`
 
 
 ## Getting started
@@ -146,16 +147,15 @@ project->add_dependency({
 - [x] Auto-generated file structure.
 - [x] Generation of `compile_commands.json`
 - [x] Incremental builds
-- [ ] Multithreaded builds
-    - [x] Basic unbalanced multithreading
-    - [x] Logging
-    - [ ] Balanced threads (perhaps a job system)
+- [x] Multithreaded builds (Unbalanced)
 - [x] `test` command
-- [ ] Native support for test frameworks like [Catch2](https://github.com/catchorg/Catch2) or [GoogleTest](https://github.com/google/googletest).
+- [ ] Support for MSVC
 - [ ] Local dependency management
 - [ ] Remote depenency management and/or integration with Conan.
-- [ ] Support for MSVC
-- [ ] Optional support for [mold](https://github.com/rui314/mold)
-- [ ] Optional support for [RAD linker](https://github.com/EpicGamesExt/raddebugger)
+- [ ] Nested projects
+- [ ] Native support for test frameworks like [Catch2](https://github.com/catchorg/Catch2) or [GoogleTest](https://github.com/google/googletest).
 - [ ] Optional support for Make, Ninja, CMake and other build systems (for dependencies or as an alternative backend).
+- [ ] Allow to choose the linker
+- [ ] Support for C
+- [ ] Support for Obj-C
 

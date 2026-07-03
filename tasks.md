@@ -1,0 +1,34 @@
+# TODO
+- [ ] Clean and recompile if the target has changed since the last call
+- [ ] Don't require the test framework to be included in the project
+- [ ] Multithreaded builds
+    - [x] Basic unbalanced multithreading
+    - [x] Logging
+    - [ ] Balanced threads (perhaps a job system)
+- [ ] Native LTO support (without having to manually add flags)
+- [ ] Nested projects
+    - [ ] Other dedalo sub-projects
+    - [ ] Other build systems?
+        - [ ] Make
+        - [ ] CMake
+- [ ] MSVC support
+	- [ ] “Translate” the flags
+	- [ ] Replace non-portable `libc` code with STL
+		- [ ] `fopen` > `ifstream`
+- [ ] Platform support (separated from Target?)
+- [ ] Meta build system
+    - [ ] Generate Make files
+    - [ ] Generate Ninja files
+    - [ ] Generate CMake files
+- [ ] Choose the linker independently of the compiler
+    - [ ] C linker instead of C++
+    - [ ] [mold](https://github.com/rui314/mold)
+    - [ ] [RAD linker](https://github.com/EpicGamesExt/raddebugger)
+- [ ] Support for C
+- [ ] Support for Obj-C
+
+# Done
+- [x] Don't print the whole compile command for each source file, just the name
+- [x] Deal with new/deleted source files
+- [x] Split the file list into separated lists for each thread to avoid false sharing
+- [x] Different output paths for each target
