@@ -309,7 +309,7 @@ struct Project
         List<String>     common_compiler_flags     = {};
         List<String>     common_defines            = {};
         List<String>     command_line_arguments    = {};
-        String           default_target            = "Debug";
+        String           default_target            = "debug";
         LTO              link_time_optimizations   = LTO::None;
         List<Dependency> dependencies              = {};
         List<ScriptPtr>  pre_build_scripts         = {};
@@ -428,7 +428,7 @@ struct Project
         REQUIRE( target.name != "unnamed" );
         REQUIRE_MSG( target.name != "all", "`All` is a reserved target name" );
 
-        // We allow overwriting targets so people can add their own "Debug" and "Release"
+        // We allow overwriting targets so people can add their own "debug" and "release"
         if( var* old_target = find_target( target.name ) )
         {
             *old_target = target;
@@ -506,7 +506,7 @@ struct Project
     List<Target> targets
     {
         {
-            .name               = "Debug",
+            .name               = "debug",
             .optimization_level = 0,
             .sanitizers         = ASan | UBSan,
             .defines            = { "DEBUG" },
@@ -518,7 +518,7 @@ struct Project
                 "pedantic" }
         },
         {
-            .name               = "Test",
+            .name               = "test",
             .optimization_level = 0,
             .sanitizers         = ASan | UBSan,
             .defines            = { "TESTING" },
@@ -531,7 +531,7 @@ struct Project
             .source_path        = "tests"
         },
         {
-            .name               = "Release",
+            .name               = "release",
             .optimization_level = 3,
             .sanitizers         = No_Sanitizers,
             .defines            = { "RELEASE" },
