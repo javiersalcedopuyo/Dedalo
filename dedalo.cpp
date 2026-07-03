@@ -47,6 +47,7 @@ using i8  = int8_t;
 using i16 = int16_t;
 using i32 = int32_t;
 
+using uchar = unsigned char;
 using usize = size_t;
 
 using f32 = float;
@@ -126,6 +127,13 @@ static inline fun println( FILE* stream, std::format_string<Args...> fmt_str, Ar
     #define UNREACHABLE             PANIC( "Reached unreachable code." )
 //}
 #endif
+
+
+file_private constexpr fun to_lower( String* str )
+{
+    REQUIRE( str );
+    std::ranges::transform( *str, str->begin(), []( uchar c ) -> uchar { return std::tolower( c ); } );
+}
 
 
 struct Platform
@@ -406,11 +414,14 @@ struct Project
     }
 
     // TODO: Add more validation
-    constexpr fun add_target( const Target& target )
+    constexpr fun add_target( Target target )
     {
-        REQUIRE( target.name != "UNNAMED" );
-        REQUIRE_MSG( target.name != "All", "`All` is a reserved target name" );
-        REQUIRE( !target.name.empty() );
+        REQUIRE( not target.name.empty() );
+
+        to_lower( &target.name );
+
+        REQUIRE( target.name != "unnamed" );
+        REQUIRE_MSG( target.name != "all", "`All` is a reserved target name" );
 
         // We allow overwriting targets so people can add their own "Debug" and "Release"
         if( var* old_target = find_target( target.name ) )
@@ -701,6 +712,7 @@ void build( Project* project, [[maybe_unused]] const MainArgvSlice args )
 {
     REQUIRE( project );
 
+    // **Target names are case-insensitive**
     // "Debug", "Test", and "Release" targets are provided by default.
     // You can override them by creating a new target with the same name.
     // "Debug" is the default target when none is provided to the `run` command.
@@ -757,13 +769,14 @@ auto main( int argc, char* argv[] ) -> int
 
 
 static let include_paths  = List<String>{ "src", "lib"  };
-static let dep_output_dir = String( "./build/dep"       );
-static let bin_exec_dir   = String( "./build/bin"       );
-static let bin_lib_dir    = String( "./build/bin/lib"   );
+static let build_dir      = String( "./build"       );
+static let dep_output_dir = String( "dep"       );
+static let obj_output_dir = String( "obj"       );
+static let bin_exec_dir   = String( "bin"       );
+static let bin_lib_dir    = String( "bin/lib"   );
+static let json_temp_dir  = String( "json"      );
+static let lto_cache_dir  = String( "cache/lto" );
 static let libraries_dir  = String( "./lib"             );
-static let json_temp_dir  = Path  ( "./build/json"      );
-static let obj_output_dir = String( "./build/obj"       );
-static let lto_cache_dir  = String( "./build/cache/lto" );
 
 
 using BuildCfgFunPtr = void(*)( Project*, const MainArgvSlice args );
@@ -790,8 +803,6 @@ fun init() -> ResultCode
         FS::create_directory( "lib" );
         FS::create_directory( "tests" );
         // TODO: Create a cache and/or other build system files (ninja, make, CMake...)
-        FS::create_directories( obj_output_dir );
-        FS::create_directories( lto_cache_dir  ); // FIXME: I think this is not used by MSCV
 
         FS::create_directory( "src" );
         {
@@ -986,6 +997,7 @@ file_private fun compile(
         Compiler compiler;
         String   compiler_flags;
         String   defines;
+        String   target_name;
         String   source_path;
         String   include_paths;
         u8       cpp_version;
@@ -1032,12 +1044,12 @@ file_private fun compile(
                 }
             }
 
-            let out_obj_path = Path( obj_output_dir + src_relative_cpp_path + ".o" );
-            let out_dep_path = Path( dep_output_dir + src_relative_cpp_path + ".d" );
+            let out_obj_path = Path( strfmt( "{}/{}/{}/{}.o", build_dir, ctx.target_name, obj_output_dir, src_relative_cpp_path ) );
+            let out_dep_path = Path( strfmt( "{}/{}/{}/{}.d", build_dir, ctx.target_name, dep_output_dir, src_relative_cpp_path ) );
+            let lto_path     = Path( strfmt( "{}/{}/{}",      build_dir, ctx.target_name, lto_cache_dir ) );
 
             // Make sure we're replicating the ./src tree in the obj and deps directories
-            FS::create_directories( out_obj_path.parent_path() );
-            FS::create_directories( out_dep_path.parent_path() );
+            FS::create_directories( lto_path ); // FIXME: I think this is not used by MSCV
 
             if( !ctx.force_compilation and !needs_recompiling( out_obj_path, out_dep_path ) )
             {
@@ -1059,7 +1071,7 @@ file_private fun compile(
             if( ctx.generate_compile_commands )
             {
                 // Make sure we're replicating the ./src tree in the compile_commands.json temp directory
-                let out_json_path = Path( json_temp_dir.string() + src_relative_cpp_path + ".json" );
+                let out_json_path = Path( strfmt( "{}/{}/{}/{}.json", build_dir, ctx.target_name, json_temp_dir, src_relative_cpp_path ) );
                 FS::create_directories( out_json_path.parent_path() );
                 command += strfmt( " -MJ {} ", out_json_path.string() );
 
@@ -1081,7 +1093,7 @@ file_private fun compile(
                         if( ctx.link_time_optimizations == LTO::Incremental )
                         {
                             // FIXME: I'm not entirely sure this is necessary
-                            command += strfmt( " -lfto-incremental={}", lto_cache_dir );
+                            command += strfmt( " -lfto-incremental={}", lto_path.string() );
                         }
                         break;
                     }
@@ -1114,6 +1126,7 @@ file_private fun compile(
         .compiler                   = project.compiler,
         .compiler_flags             = get_flags_from( target ),
         .defines                    = get_defines_from( target ),
+        .target_name                = target.name,
         .source_path                = target.source_path,
         .include_paths              = ctx_include_paths,
         .cpp_version                = project.cpp_version,
@@ -1163,7 +1176,8 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
 
     TIME_SCOPE( "Linking phase" );
 
-    FS::create_directories( bin_lib_dir );
+    let build_lib_dir = strfmt( "{}/{}/{}", build_dir, target.name, bin_lib_dir );
+    FS::create_directories( build_lib_dir );
 
     var command = get_compiler_name( project.compiler );
 
@@ -1171,8 +1185,9 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
 
     // Add the compiled .o files
     {
+        let obj_dir = strfmt( "{}/{}/{}", build_dir, target.name, obj_output_dir );
         var obj_paths = List<Path>();
-        gather_files( obj_output_dir, {".o"}, {}, &obj_paths );
+        gather_files( obj_dir, {".o"}, {}, &obj_paths );
 
         REQUIRE_MSG( !obj_paths.empty(), "No compiled binaries to link?" );
 
@@ -1235,7 +1250,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
                         {
                             FS::copy_file(
                                 lib,
-                                bin_lib_dir + "/" + lib.filename().string(),
+                                build_lib_dir + "/" + lib.filename().string(),
                                 FS::copy_options::overwrite_existing );
                         }
                         break;
@@ -1282,7 +1297,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
         command += " -Wl,-rpath,/usr/local/lib";
         command += " -L/opt/homebrew/lib";
     }
-    command += " -L" + bin_lib_dir;
+    command += " -L" + build_lib_dir;
 
     if( project.link_time_optimizations != LTO::None )
     {
@@ -1293,7 +1308,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
                 command += " -lfto";
                 if( project.link_time_optimizations == LTO::Incremental )
                 {
-                    command += strfmt( " -lfto-incremental={}", lto_cache_dir );
+                    command += strfmt( " -lfto-incremental={}/{}/{}", build_dir, target.name, lto_cache_dir );
                 }
                 break;
             }
@@ -1315,7 +1330,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
         }
     }
 
-    command += strfmt( " -o {}/{}", bin_exec_dir, project.name );
+    command += strfmt( " -o {}/{}/{}/{}", build_dir, target.name, bin_exec_dir, project.name );
 
     INFO( "{}", command );
 
@@ -1355,16 +1370,13 @@ file_private fun compile_config( bool* has_changed ) -> ResultCode
 }
 
 
-file_private fun build_compile_commands_json()
+file_private fun build_compile_commands_json( const String& target_name )
 {
-    if( !FS::is_directory( json_temp_dir ) )
-    {
-        ERROR( "`build/json` directory doesn't exist." );
-        return;
-    }
+    let build_json_dir = strfmt( "{}/{}/{}", build_dir, target_name, json_temp_dir );
+    REQUIRE( FS::is_directory( json_temp_dir ) );
 
     var json_paths = List<Path>{};
-    gather_files( json_temp_dir, {".json"}, {}, &json_paths );
+    gather_files( build_json_dir, {".json"}, {}, &json_paths );
 
     var* cmp_cmd_json = fopen( "compile_commands.json", "w" );
     REQUIRE( cmp_cmd_json );
@@ -1394,10 +1406,7 @@ file_private fun build_compile_commands_json()
 
 file_private fun build( String target_name, const bool run_after_build, const MainArgvSlice args ) -> ResultCode
 {
-    // Make sure the build directories exist
-    FS::create_directories( obj_output_dir );
-    FS::create_directories( dep_output_dir );
-    FS::create_directories( json_temp_dir );
+    FS::create_directories( build_dir );
 
     bool config_recompiled = false;
     if( let error = compile_config( &config_recompiled ) )
@@ -1446,11 +1455,17 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
     if( target_name.empty() )
         target_name = project.default_target;
 
+    to_lower( &target_name );
+
     if( let* target = project.find_target( target_name ) )
     {
         INFO( "Starting build of project \"{}\" for target \"{}\"...", project.name, target->name );
         {
             TIME_SCOPE( "Building phase" );
+
+            // Make sure the build directories exist
+            FS::create_directories( strfmt( "{}/{}/{}", build_dir, target_name, dep_output_dir ) );
+            FS::create_directories( strfmt( "{}/{}/{}", build_dir, target_name, obj_output_dir ) );
 
             for( var i = 0u; i < target->pre_build_scripts.size(); ++i )
             {
@@ -1479,7 +1494,7 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
             }
             if( project.generate_compile_commands )
             {
-                build_compile_commands_json();
+                build_compile_commands_json( target->name );
             }
             if( let error = link( project, *target ) )
             {
@@ -1504,9 +1519,9 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
         if( run_after_build )
         {
             INFO( "RUNNING...\n" );
-            var command = "./" + bin_exec_dir + "/" + project.name;
+            var command = strfmt( "./{}/{}/{}/{}", build_dir, target->name, bin_exec_dir, project.name );
 
-            if( target_name == "Test" )
+            if( target_name == "test" )
             {
                 for( let *arg: args )
                 {
@@ -1529,28 +1544,10 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
 }
 
 
-fun run() -> ResultCode
-{
-    let project_name = FS::current_path().stem().string();
-    let command = "./" + bin_exec_dir + "/" + project_name;
-
-    return system( command.c_str() ) == OK
-        ? OK
-        : RUN_COMMAND_FAILED;
-}
-
-
 fun clean() -> ResultCode
 {
     FS::remove_all( "./build" );
     return OK;
-}
-
-
-file_private fun to_lower( String* str )
-{
-    REQUIRE( str );
-    std::ranges::transform( *str, str->begin(), []( unsigned char c ) -> unsigned char { return std::tolower( c ); } );
 }
 
 
