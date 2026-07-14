@@ -554,11 +554,11 @@ struct Project
 using CString = const char*;
 struct MainArgvSlice
 {
-    const CString* data = nullptr;
-    const u32      size = 0;
+    const String* data = nullptr;
+    const u32     size = 0;
 
-    [[nodiscard]] constexpr fun begin() const -> const CString* { return data; }
-    [[nodiscard]] constexpr fun end()   const -> const CString* { return data + size; }
+    [[nodiscard]] constexpr fun begin() const -> const String* { return data; }
+    [[nodiscard]] constexpr fun end()   const -> const String* { return data + size; }
 };
 
 
@@ -787,6 +787,7 @@ static let libraries_dir  = String( "./lib"             );
 using BuildCfgFunPtr = void(*)( Project*, const MainArgvSlice args );
 BuildCfgFunPtr build_cfg = nullptr;
 
+var is_verbose = false;
 
 template<typename Container, typename T>
 constexpr fun contains( const Container& haystack, const T& needle ) -> bool
@@ -1012,7 +1013,6 @@ file_private fun compile(
         LTO      link_time_optimizations;
     };
 
-    [[ maybe_unused ]]
     var logging_mutex = std::mutex{};
 
     // TODO: Add logging
@@ -1029,13 +1029,12 @@ file_private fun compile(
             if( st.stop_requested() )
                 return;
 
-            #if defined( ENABLE_LOGS )
+            if( is_verbose )
             {
                 // FIXME: Is this the best way to do this?
                 let lock = MutexLock{ logging_mutex };
                 INFO( "\t- {}", source_file.string() );
             }
-            #endif
 
             REQUIRE_MSG( source_file.is_relative(), "Something weird happened gathering the paths." );
 
@@ -1106,6 +1105,13 @@ file_private fun compile(
                     case Compiler::MSVC:  command += "/GL"; break;
                     default: UNREACHABLE;
                 }
+            }
+
+            if( is_verbose )
+            {
+                // FIXME: Is this the best way to do this?
+                let lock = MutexLock{ logging_mutex };
+                INFO( "\t{}", command );
             }
 
             if( system( command.c_str() ) != OK )
@@ -1530,9 +1536,9 @@ file_private fun build( String target_name, const bool run_after_build, const Ma
 
             if( target_name == "test" )
             {
-                for( let *arg: args )
+                for( let &arg: args )
                 {
-                    command += " " + String( arg );
+                    command += " " + arg;
                 }
             }
 
@@ -1571,7 +1577,7 @@ file_private fun parse_command( String cmd ) -> Command
         return Command::Test;
     else if( cmd == "clean" )
         return Command::Clean;
-    else if( cmd == "--version" or cmd == "-v" )
+    else if( cmd == "version" )
         return Command::Version;
     else if( cmd == "init" )
         return Command::Init;
@@ -1589,7 +1595,7 @@ file_private fun print_valid_commands()
             "\tinit\n"
             "\trun\n"
             "\ttest\n"
-            "\t--version, -v\n" );
+            "\tversion" );
 }
 
 
@@ -1602,7 +1608,25 @@ fun main( i32 argc, char* argv[] ) -> i32
         return INVALID_ARGUMENT;
     }
 
-    let cmd = parse_command( argv[1] );
+
+    var arguments = List<String>{};
+    arguments.reserve( argc - 1 );
+
+    for( var i = 1; i < argc; ++i )
+    {
+        // Parse flags
+        if( argv[i][0] == '-' )
+        {
+            if( strcmp( argv[i], "-v" ) == 0  or strcmp( argv[i], "--verbose" ) == 0 )
+            {
+                is_verbose = true;
+            }
+            continue;
+        }
+        arguments.emplace_back( argv[i] );
+    }
+
+    let cmd = parse_command( arguments[0] );
     switch( cmd )
     {
         case Command::Init:
@@ -1623,11 +1647,11 @@ fun main( i32 argc, char* argv[] ) -> i32
             var first_remaining_arg = 2u;
             if( argc > 2 and cmd != Command::Test )
             {
-                target_name = argv[2];
+                target_name = arguments[1];
                 ++first_remaining_arg;
             }
             let remaining_args = MainArgvSlice{
-                .data = argv + first_remaining_arg,
+                .data = arguments.data() + first_remaining_arg,
                 .size = as<u32>( argc ) - first_remaining_arg };
 
             if( cmd == Command::Test )
@@ -1644,7 +1668,7 @@ fun main( i32 argc, char* argv[] ) -> i32
         }
         default:
         {
-            ERROR( "Unrecognized command '{}'.", argv[1] );
+            ERROR( "Unrecognized command '{}'.", arguments[0] );
             print_valid_commands();
             return INVALID_ARGUMENT;
         }
