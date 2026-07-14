@@ -1039,20 +1039,22 @@ file_private fun compile(
             REQUIRE_MSG( source_file.is_relative(), "Something weird happened gathering the paths." );
 
             // FIXME: There must be a better way to do this. Perhaps with string views?
-            var src_relative_cpp_path = String();
+            var src_relative_cpp_path = Path();
             for( let& dir: source_file )
             {
                 if( dir != Path( ctx.source_path ) )
                 {
-                    src_relative_cpp_path += "/" + dir.string();
+                    src_relative_cpp_path /= dir; // I hate this operator but the usage of `append` is even more awkward...
                 }
             }
 
-            let out_obj_path = Path( strfmt( "{}/{}/{}/{}.o", build_dir, ctx.target_name, obj_output_dir, src_relative_cpp_path ) );
-            let out_dep_path = Path( strfmt( "{}/{}/{}/{}.d", build_dir, ctx.target_name, dep_output_dir, src_relative_cpp_path ) );
+            let out_obj_path = Path( strfmt( "{}/{}/{}/{}.o", build_dir, ctx.target_name, obj_output_dir, src_relative_cpp_path.string() ) );
+            let out_dep_path = Path( strfmt( "{}/{}/{}/{}.d", build_dir, ctx.target_name, dep_output_dir, src_relative_cpp_path.string() ) );
             let lto_path     = Path( strfmt( "{}/{}/{}",      build_dir, ctx.target_name, lto_cache_dir ) );
 
             // Make sure we're replicating the ./src tree in the obj and deps directories
+            FS::create_directories( out_obj_path.parent_path() );
+            FS::create_directories( out_dep_path.parent_path() );
             FS::create_directories( lto_path ); // FIXME: I think this is not used by MSCV
 
             if( !ctx.force_compilation and !needs_recompiling( out_obj_path, out_dep_path ) )
@@ -1075,7 +1077,7 @@ file_private fun compile(
             if( ctx.generate_compile_commands )
             {
                 // Make sure we're replicating the ./src tree in the compile_commands.json temp directory
-                let out_json_path = Path( strfmt( "{}/{}/{}/{}.json", build_dir, ctx.target_name, json_temp_dir, src_relative_cpp_path ) );
+                let out_json_path = Path( strfmt( "{}/{}/{}/{}.json", build_dir, ctx.target_name, json_temp_dir, src_relative_cpp_path.string() ) );
                 FS::create_directories( out_json_path.parent_path() );
                 command += strfmt( " -MJ {} ", out_json_path.string() );
 
