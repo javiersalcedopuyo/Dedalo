@@ -225,7 +225,7 @@ struct Version
 };
 
 
-file_private constexpr let version = Version{ 0,3,0 };
+file_private constexpr let version = Version{ 0,3,1 };
 
 
 struct ScriptPtr
