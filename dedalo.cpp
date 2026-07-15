@@ -565,6 +565,7 @@ struct MainArgvSlice
 #if !defined( INCLUDE_AS_HEADER )
 
 #include <chrono>
+#include <cstring>
 using std::chrono::system_clock;
 using Time = std::chrono::time_point<system_clock>;
 
