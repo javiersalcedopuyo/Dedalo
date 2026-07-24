@@ -27,9 +27,10 @@ CLANG_TIDY_CHECKS = bugprone-*,\
 					-misc-non-private-member-variables-in-classes,\
 					-misc-use-anonymous-namespace,\
 					-misc-use-internal-linkage,\
+					-misc-include-cleaner,\
+					-misc-no-recursion,\
 					-modernize-use-designated-initializers,\
-					-modernize-avoid-c-style-cast,\
-					-misc-include-cleaner
+					-modernize-avoid-c-style-cast
 
 ddl: dedalo.cpp
 	@echo "Compiling..."

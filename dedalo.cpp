@@ -225,7 +225,7 @@ struct Version
 };
 
 
-file_private constexpr let version = Version{ 0,3,1 };
+file_private constexpr let version = Version{ 0,3,2 };
 
 
 struct ScriptPtr
@@ -554,8 +554,8 @@ struct Project
 using CString = const char*;
 struct MainArgvSlice
 {
-    const String* data = nullptr;
-    const u32     size = 0;
+    String* data = nullptr;
+    usize   size = 0;
 
     [[nodiscard]] constexpr fun begin() const -> const String* { return data; }
     [[nodiscard]] constexpr fun end()   const -> const String* { return data + size; }
@@ -1647,20 +1647,23 @@ fun main( i32 argc, char* argv[] ) -> i32
             let run_after_build = ( cmd == Command::Run or cmd == Command::Test );
 
             // Pass the remaining args to the build script
-            var first_remaining_arg = 2u;
-            if( argc > 2 and cmd != Command::Test )
-            {
-                target_name = arguments[1];
-                ++first_remaining_arg;
-            }
-            let remaining_args = MainArgvSlice{
-                .data = arguments.data() + first_remaining_arg,
-                .size = as<u32>( argc ) - first_remaining_arg };
-
+            var first_remaining_arg = 1u;
             if( cmd == Command::Test )
             {
                 target_name = "Test";
             }
+            else if( arguments.size() > 1 )
+            {
+                target_name = arguments[1];
+                first_remaining_arg += 1;
+
+            }
+
+            REQUIRE( first_remaining_arg <= arguments.size() );
+
+            let remaining_args = MainArgvSlice{
+                .data = arguments.data() + first_remaining_arg,
+                .size = arguments.size() - first_remaining_arg };
 
             if( let error = build( target_name, run_after_build, remaining_args ) )
             {
