@@ -12,7 +12,7 @@ Dedalo is a strongly opinionated C++ build system that allows you to describe, c
 
 .SH COMMANDS
 .TP
-.B \-v, \-\-version
+.B version
 Prints the version number.
 
 .TP
@@ -35,6 +35,11 @@ Deletes the \fB./build\fR directory.
 .B test
 Builds and runs the testing target.
 
+.SH FLAGS
+.TP
+.B \-v, \-\-verbose
+Prints more logs like the exact compile commands and file names.
+
 .SH EXAMPLES
 .SS Creating a new project
 .nf
@@ -49,15 +54,16 @@ This generates the following directory structure, builds, and runs the project, 
 .nf
 .
 ├── build
-│   ├── bin
-│   │   └── my_project
 │   ├── build_script.so
-│   ├── dep
-│   │   └── main.cpp.d
-│   ├── json
-│   │   └── main.cpp.json
-│   └── obj
-│       └── main.cpp.o
+│   └── debug
+│       ├── bin
+│       │   └── my_project
+│       ├── dep
+│       │   └── main.cpp.d
+│       ├── json
+│       │   └── main.cpp.json
+│       └── obj
+│           └── main.cpp.o
 ├── build.cpp
 ├── compile_commands.json
 ├── lib
