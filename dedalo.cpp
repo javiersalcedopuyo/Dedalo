@@ -1,3 +1,7 @@
+#if __cplusplus < 202002L
+#error Unsupported C++ version. Use at least C++20.
+#endif
+
 // C stuff
 #include <cstddef>
 #include <cstdlib>
