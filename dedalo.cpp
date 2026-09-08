@@ -40,7 +40,7 @@ using StopToken = std::stop_token;
 #define let auto const
 #define constant static constexpr auto
 
-#define file_private static // For static free functions in cpp files
+#define internal static // For free functions with *internal* linking (aka private to the translation unit)
 
 namespace FS = std::filesystem;
 
@@ -69,14 +69,14 @@ using Path = FS::path;
 
 
 template< typename... Args >
-static inline fun strfmt( std::format_string<Args...> fmt_str, Args&&... args ) -> String
+internal inline fun strfmt( std::format_string<Args...> fmt_str, Args&&... args ) -> String
 {
     return std::format( fmt_str, std::forward<Args>( args )... );
 }
 
 
 template< typename... Args >
-static inline fun println( FILE* stream, std::format_string<Args...> fmt_str, Args&&... args )
+internal inline fun println( FILE* stream, std::format_string<Args...> fmt_str, Args&&... args )
 {
     fprintf( stream, "%s\n", strfmt( fmt_str, std::forward<Args>( args )... ).c_str() );
 }
@@ -134,7 +134,7 @@ static inline fun println( FILE* stream, std::format_string<Args...> fmt_str, Ar
 #endif
 
 
-file_private constexpr fun to_lower( String* str )
+internal constexpr fun to_lower( String* str )
 {
     REQUIRE( str );
     std::ranges::transform( *str, str->begin(), []( uchar c ) -> uchar { return std::tolower( c ); } );
@@ -196,7 +196,7 @@ struct Platform
 };
 
 
-static constexpr Platform platform =
+constant platform = Platform
 #if defined( __linux__ )
     { .val = Platform::Linux };
 #elif defined( __APPLE__ )
@@ -229,7 +229,7 @@ struct Version
 };
 
 
-file_private constexpr let version = Version{ 0,3,2 };
+internal constexpr let version = Version{ 0,3,2 };
 
 
 struct ScriptPtr
@@ -575,7 +575,7 @@ using Time = std::chrono::time_point<system_clock>;
 
 #if defined( ENABLE_LOGS )
 
-file_private fun fmt_time_since( const Time start ) -> String
+internal fun fmt_time_since( const Time start ) -> String
 {
     using std::chrono::minutes;
     using std::chrono::seconds;
@@ -600,7 +600,7 @@ file_private fun fmt_time_since( const Time start ) -> String
 #endif // ENABLE_LOGS
 
 
-file_private fun is_directory_empty( const Path& path) -> bool
+internal fun is_directory_empty( const Path& path) -> bool
 {
     if( FS::exists( path ) and FS::is_directory( path ) )
     {
@@ -627,7 +627,7 @@ enum [[nodiscard]] ResultCode: i16
 
 
 #if defined( ENABLE_LOGS )
-file_private fun stringify_result( const ResultCode res ) -> String
+internal fun stringify_result( const ResultCode res ) -> String
 {
     switch( res )
     {
@@ -671,7 +671,7 @@ private:
 constexpr fun min( const auto a, const auto b ) ->  auto { return a < b ? a : b; }
 constexpr fun max( const auto a, const auto b ) ->  auto { return a > b ? a : b; }
 
-file_private fun trim( String* input )
+internal fun trim( String* input )
 {
     using std::ranges::find_if_not;
     using std::ranges::views::reverse;
@@ -690,7 +690,7 @@ file_private fun trim( String* input )
 }
 
 
-file_private fun split( const String& input, const char delimiter ) -> List<std::string_view>
+internal fun split( const String& input, const char delimiter ) -> List<std::string_view>
 {
     var slices = List<std::string_view>{};
 
@@ -762,7 +762,7 @@ int main( [[maybe_unused]] int argc, [[maybe_unused]] char* argv[] )
 
 
 // TODO: Validate the arguments
-file_private let test_file_template_icaro = String(R"(
+internal let test_file_template_icaro = String(R"(
 #include "../icaro.hpp"
 
 auto main( int argc, char* argv[] ) -> int
@@ -855,7 +855,7 @@ fun init() -> ResultCode
 }
 
 
-file_private fun gather_files(
+internal fun gather_files(
     const Path&         in_path,
     const List<String>& extensions,
     const List<Path>&   excluded_paths,
@@ -888,7 +888,7 @@ file_private fun gather_files(
 }
 
 
-static constexpr fun get_compiler_name( const Compiler compiler ) -> String
+internal constexpr fun get_compiler_name( const Compiler compiler ) -> String
 {
     switch (compiler)
     {
@@ -900,7 +900,7 @@ static constexpr fun get_compiler_name( const Compiler compiler ) -> String
 }
 
 
-static constexpr fun get_sanitizer_flags( const Target& target ) -> String
+internal constexpr fun get_sanitizer_flags( const Target& target ) -> String
 {
     var flags = String();
 
@@ -917,7 +917,7 @@ static constexpr fun get_sanitizer_flags( const Target& target ) -> String
 }
 
 
-static constexpr fun get_flags_from( const Target& target ) -> String
+internal constexpr fun get_flags_from( const Target& target ) -> String
 {
     var flags = String();
     for( let& flag: target.compiler_flags )
@@ -928,7 +928,7 @@ static constexpr fun get_flags_from( const Target& target ) -> String
 }
 
 
-static constexpr fun get_defines_from( const Target& target ) -> String
+internal constexpr fun get_defines_from( const Target& target ) -> String
 {
     var result = String();
     for( let& def: target.defines )
@@ -939,7 +939,7 @@ static constexpr fun get_defines_from( const Target& target ) -> String
 }
 
 
-file_private fun needs_recompiling(
+internal fun needs_recompiling(
     const Path& obj_path,
     const Path& dep_path )
 -> bool
@@ -991,7 +991,7 @@ file_private fun needs_recompiling(
 }
 
 
-file_private fun compile(
+internal fun compile(
     const Project&    project,
     const Target&     target,
     const List<Path>& cpp_paths,
@@ -1188,7 +1188,7 @@ file_private fun compile(
 }
 
 // FIXME: This is probably doing too many allocations by concatenating strings
-file_private fun link( const Project& project, const Target& target ) -> ResultCode
+internal fun link( const Project& project, const Target& target ) -> ResultCode
 {
     INFO( "LINKING..." );
 
@@ -1363,7 +1363,7 @@ file_private fun link( const Project& project, const Target& target ) -> ResultC
 }
 
 
-file_private fun compile_config( bool* has_changed ) -> ResultCode
+internal fun compile_config( bool* has_changed ) -> ResultCode
 {
     REQUIRE( has_changed );
 
@@ -1390,7 +1390,7 @@ file_private fun compile_config( bool* has_changed ) -> ResultCode
 }
 
 
-file_private fun build_compile_commands_json( const String& target_name )
+internal fun build_compile_commands_json( const String& target_name )
 {
     let build_json_dir = strfmt( "{}/{}/{}", build_dir, target_name, json_temp_dir );
     REQUIRE( FS::is_directory( json_temp_dir ) );
@@ -1424,7 +1424,7 @@ file_private fun build_compile_commands_json( const String& target_name )
 }
 
 
-file_private fun build( String target_name, const bool run_after_build, const MainArgvSlice args ) -> ResultCode
+internal fun build( String target_name, const bool run_after_build, const MainArgvSlice args ) -> ResultCode
 {
     FS::create_directories( build_dir );
 
@@ -1572,7 +1572,7 @@ fun clean() -> ResultCode
 
 
 enum struct Command : u8 { Init, Build, Run, Test, Clean, Version, Unknown };
-file_private fun parse_command( String cmd ) -> Command
+internal fun parse_command( String cmd ) -> Command
 {
     to_lower( &cmd );
 
@@ -1593,7 +1593,7 @@ file_private fun parse_command( String cmd ) -> Command
 }
 
 
-file_private fun print_valid_commands()
+internal fun print_valid_commands()
 {
     println( stderr,
         "Valid commands:\n"
