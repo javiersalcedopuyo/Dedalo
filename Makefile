@@ -40,7 +40,7 @@ ddl: dedalo.cpp
 	@echo ']' >> compile_commands.json
 	@rm tmp.json
 
-.PHONY: run rebuild  release debug clean reset install uninstall tidy
+.PHONY: run rebuild  release debug clean reset install uninstall tidy test
 
 run: dedalo
 	./$(EXECUTABLE_NAME) run
@@ -80,3 +80,10 @@ uninstall:
 
 tidy:
 	clang-tidy dedalo.cpp -p . --checks='$(CLANG_TIDY_CHECKS)'
+
+test:
+	$(MAKE) ddl
+	@mkdir test
+	@cp ddl ./test
+	@cd ./test && ./ddl init && ./ddl run
+	@rm -rf test
