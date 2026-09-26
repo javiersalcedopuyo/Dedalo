@@ -1393,7 +1393,7 @@ internal fun compile_config( bool* has_changed ) -> ResultCode
 internal fun build_compile_commands_json( const String& target_name )
 {
     let build_json_dir = strfmt( "{}/{}/{}", build_dir, target_name, json_temp_dir );
-    REQUIRE( FS::is_directory( json_temp_dir ) );
+    REQUIRE( FS::is_directory( build_json_dir ) );
 
     var json_paths = List<Path>{};
     gather_files( build_json_dir, {".json"}, {}, &json_paths );
