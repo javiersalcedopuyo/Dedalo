@@ -229,7 +229,7 @@ struct Version
 };
 
 
-internal constexpr let version = Version{ 0,3,2 };
+internal constexpr let version = Version{ 0,3,3 };
 
 
 struct ScriptPtr
