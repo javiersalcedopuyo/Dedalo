@@ -241,7 +241,6 @@ struct ScriptPtr
 
 struct Target
 {
-
     String       name               = "UNNAMED"; // Redundant but convenient
     u8           optimization_level = 0;
     u8           sanitizers         = No_Sanitizers;
@@ -252,8 +251,6 @@ struct Target
 
     List<ScriptPtr> pre_build_scripts  = {};
     List<ScriptPtr> post_build_scripts = {};
-
-    String source_path = "src"; // Only really meant for the test target to have a different one.
 };
 
 enum struct Location: u8
@@ -531,8 +528,7 @@ struct Project
                 "Wall",
                 "Wextra",
                 "Werror",
-                "pedantic" },
-            .source_path        = "tests"
+                "pedantic" }
         },
         {
             .name               = "release",
@@ -751,7 +747,7 @@ void build( Project* project, [[maybe_unused]] const MainArgvSlice args )
 }
 )");
 
-static let new_main_file_template = String(R"(
+internal let new_main_file_template = String(R"(
 #include <stdio.h>
 
 int main( [[maybe_unused]] int argc, [[maybe_unused]] char* argv[] )
@@ -763,9 +759,12 @@ int main( [[maybe_unused]] int argc, [[maybe_unused]] char* argv[] )
 
 // TODO: Validate the arguments
 internal let test_file_template_icaro = String(R"(
+#include <cstdlib>
 #include "../icaro.hpp"
 
-auto main( int argc, char* argv[] ) -> int
+extern "C"
+[[noreturn]]
+auto tests_main( int argc, char* argv[] ) -> void
 {
     TEST( hello_tests,
     {
@@ -774,6 +773,20 @@ auto main( int argc, char* argv[] ) -> int
     });
 
     Icaro::run({ .filter = argc > 1 ? argv[1] : "" });
+
+    std::exit(0);
+}
+)");
+
+
+internal let test_file_template = String(R"(
+#include <cstdlib>
+
+extern "C"
+[[noreturn]]
+auto tests_main( int argc, char* argv[] ) -> void
+{
+    std::exit(0);
 }
 )");
 
@@ -849,6 +862,10 @@ fun init() -> ResultCode
     if( FS::is_regular_file( "icaro.hpp" ) )
     {
         fputs( test_file_template_icaro.c_str(), tests_file );
+    }
+    else
+    {
+        fputs( test_file_template.c_str(), tests_file );
     }
 
     return OK;
@@ -1009,7 +1026,6 @@ internal fun compile(
         String   compiler_flags;
         String   defines;
         String   target_name;
-        String   source_path;
         String   include_paths;
         u8       cpp_version;
         u8       optimization_level;
@@ -1043,18 +1059,9 @@ internal fun compile(
 
             REQUIRE_MSG( source_file.is_relative(), "Something weird happened gathering the paths." );
 
-            // FIXME: There must be a better way to do this. Perhaps with string views?
-            var src_relative_cpp_path = Path();
-            for( let& dir: source_file )
-            {
-                if( dir != Path( ctx.source_path ) )
-                {
-                    src_relative_cpp_path /= dir; // I hate this operator but the usage of `append` is even more awkward...
-                }
-            }
 
-            let out_obj_path = Path( strfmt( "{}/{}/{}/{}.o", build_dir, ctx.target_name, obj_output_dir, src_relative_cpp_path.string() ) );
-            let out_dep_path = Path( strfmt( "{}/{}/{}/{}.d", build_dir, ctx.target_name, dep_output_dir, src_relative_cpp_path.string() ) );
+            let out_obj_path = Path( strfmt( "{}/{}/{}/{}.o", build_dir, ctx.target_name, obj_output_dir, source_file.string() ) );
+            let out_dep_path = Path( strfmt( "{}/{}/{}/{}.d", build_dir, ctx.target_name, dep_output_dir, source_file.string() ) );
             let lto_path     = Path( strfmt( "{}/{}/{}",      build_dir, ctx.target_name, lto_cache_dir ) );
 
             // Make sure we're replicating the ./src tree in the obj and deps directories
@@ -1082,7 +1089,7 @@ internal fun compile(
             if( ctx.generate_compile_commands )
             {
                 // Make sure we're replicating the ./src tree in the compile_commands.json temp directory
-                let out_json_path = Path( strfmt( "{}/{}/{}/{}.json", build_dir, ctx.target_name, json_temp_dir, src_relative_cpp_path.string() ) );
+                let out_json_path = Path( strfmt( "{}/{}/{}/{}.json", build_dir, ctx.target_name, json_temp_dir, source_file.string() ) );
                 FS::create_directories( out_json_path.parent_path() );
                 command += strfmt( " -MJ {} ", out_json_path.string() );
 
@@ -1145,7 +1152,6 @@ internal fun compile(
         .compiler_flags             = get_flags_from( target ),
         .defines                    = get_defines_from( target ),
         .target_name                = target.name,
-        .source_path                = target.source_path,
         .include_paths              = ctx_include_paths,
         .cpp_version                = project.cpp_version,
         .optimization_level         = target.optimization_level,
@@ -1198,6 +1204,22 @@ internal fun link( const Project& project, const Target& target ) -> ResultCode
     FS::create_directories( build_lib_dir );
 
     var command = get_compiler_name( project.compiler );
+
+    if( target.name == "test" )
+    {
+        if constexpr( platform.is( Platform::Apple ) )
+        {
+            command += " -Wl,-e,_tests_main";
+        }
+        else if constexpr( platform.is( Platform::Linux ) )
+        {
+            command += " -Wl,-e,tests_main";
+        }
+        else
+        {
+            PANIC( "No support for testing on Windows yet." );
+        }
+    }
 
     command += get_sanitizer_flags( target );
 
@@ -1503,7 +1525,11 @@ internal fun build( String target_name, const bool run_after_build, const MainAr
 
             // Find all the source files
             var cpp_paths = List<Path>{};
-            gather_files( target->source_path, {".cpp", ".cc", ".cxx"}, target->ignored_paths, &cpp_paths );
+            gather_files( "src", {".cpp", ".cc", ".cxx"}, target->ignored_paths, &cpp_paths );
+            if( target->name == "test" )
+            {
+                gather_files( "tests", {".cpp", ".cc", ".cxx"}, target->ignored_paths, &cpp_paths );
+            }
 
             // TODO: Fetch any remote dependencies and place them in lib/
             // TODO: Link any dynamic libraries into their corresponding .so in build/bin/
